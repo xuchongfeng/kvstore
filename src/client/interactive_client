@@ -1,0 +1,63 @@
+#!/usr/bin/python
+from __future__ import print_function
+import os
+import argparse
+import json
+import sys
+from kvclient import KVClient
+import readline
+import threading
+
+USAGE="""\
+COMMANDS
+  get("key")
+  put("key", "value")
+  delete("key")
+  info()"""
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Interactive KVClient')
+    parser.add_argument("-s", "--server", default="127.0.0.1",
+            help="Defaults to 127.0.0.1")
+    parser.add_argument("-p", "--port", type=int, default=9000,
+            help="Use 9000 for a single server. Use 8888 for tpc_server.")
+    args = parser.parse_args()
+    client = KVClient(args.server, int(args.port))
+    PROMPT = '({0}:{1})> '.format(args.server, args.port)
+
+    def put(key, value):
+        return client.put(key,value)
+    def get(key):
+        return client.get(key)
+    def delete(key):
+        return client.delete(key)
+    def info():
+        return client.info()
+    def help():
+        return USAGE
+    def cli():
+        try:
+            if not os.path.isfile(".kvhistory"):
+                readline.write_history_file(".kvhistory")
+            readline.read_history_file(".kvhistory")
+        except Exception:
+            pass
+        print("Type help() to get a list of commands.")
+        while True:
+            try:
+                command = str(raw_input(PROMPT))
+                if command == "exit":
+                    exit()
+                elif command == "help":
+                    print(help())
+                else:
+                    print(eval(command))
+                try:
+                    readline.write_history_file(".kvhistory")
+                except Exception:
+                    pass
+            except EOFError:
+                exit(0)
+            except Exception as e:
+                print("Error: " + str(e))
+    cli()
