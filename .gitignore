@@ -1,0 +1,22 @@
+# Ignore object binaries
+*.o
+*.pyc
+# Ignore folder with executables
+bin
+
+# Emacs:
+*~
+\#*\#
+auto-save-list
+.\#*
+
+# Vim:
+[._]*.s[a-w][a-z]
+[._]s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+*~
+
+slave-port*/**
+.kvhistory
