@@ -28,9 +28,10 @@ typedef struct kvcacheentry {
 typedef struct {
   unsigned int elem_per_set;      /* The max number of elements which can be stored in this set. */
   pthread_rwlock_t lock;          /* The lock which can be used to lock this set. */
+  pthread_mutex_t mutex;          /* The mutex to protect entry_queue operation. */
   int num_entries;                /* The current number of entries in this set. */
-  kvcacheset_entry *entries;      /* The entries in kvcacheset */
-  int *entry_queue;               /* The queue to determine which item evicted when no space for new item*/
+  kvcacheset_entry *entries;      /* The entries in kvcacheset. */
+  int *entry_queue;               /* The queue to determine which item evicted when no space for new item. */
 } kvcacheset_t;
 
 int kvcacheset_init(kvcacheset_t *, unsigned int elem_per_set);

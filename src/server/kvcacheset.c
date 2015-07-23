@@ -7,6 +7,16 @@
 #include "kvconstants.h"
 #include "kvcacheset.h"
 
+/* enum operations.
+ * update.
+ * insert.
+ * delete.*/
+enum operations{
+	update,
+	insert,
+	delete,
+};
+
 /* Initializes CACHESET to hold a maximum of ELEM_PER_SET elements.
  * ELEM_PER_SET must be at least 2.
  * Returns 0 if successful, else a negative error code. */
@@ -14,43 +24,56 @@ int kvcacheset_init(kvcacheset_t *cacheset, unsigned int elem_per_set) {
   int ret;
   if (elem_per_set < 2) return -1;
   cacheset->elem_per_set = elem_per_set;
-  if ((ret = pthread_rwlock_init(&cacheset->lock, NULL)) < 0)
+  if ((ret = pthread_rwlock_init(&(cacheset->lock), NULL)) < 0)
     return ret;
+  if ((ret = pthread_mutex_init(&(cacheset->mutex), NULL)) < 0)
+	return ret;
   cacheset->num_entries = 0;
   cacheset->entries = (kvcacheset_entry *)malloc(elem_per_set * sizeof(kvcacheset_entry));
+  if(cacheset->entries == NULL) return ENOMEM;
   memset(cacheset->entries, 0 , elem_per_set * sizeof(kvcacheset_entry));
-  if(cacheset->entries == NULL) return -1;
   cacheset->entry_queue = (int *)malloc(elem_per_set * sizeof(int));
-  if(cacheset->entry_queue == NULL) return -1;
+  if(cacheset->entry_queue == NULL) return ENOMEM;
   return 0;
 }
 
 /* update the last visited data*/
-void update_queue(kvcacheset_t *cacheset, int entry_num, bool del){
-  int index = 0;
-  int elem_per_set = cacheset->elem_per_set;
-  while(cacheset->entry_queue[index++] != entry_num && index < elem_per_set) ;
-  if(del){ 
-    while(index++ < elem_per_set){
-      cacheset->entry_queue[index] = cacheset->entry_queue[index+1];
-    }
-    return;
-  }
-  while(index-- > 0){
-    cacheset->entry_queue[index] = cacheset->entry_queue[index-1];
-  }
-  cacheset->entry_queue[0] = entry_num;
+void update_queue(kvcacheset_t *cacheset, int entry_num, int op){
+	pthread_mutex_lock(&(cacheset->mutex));
+	if(op == update){
+		int index;
+		for(index=0; index<cacheset->num_entries; index++){
+			if(cacheset->entry_queue[index] == entry_num){
+				break;
+			}
+		}
+		for(int i=index; i>0; i--){
+			cacheset->entry_queue[i] = cacheset->entry_queue[i-1];
+		}
+		cacheset->entry_queue[0] = entry_num;
+	}
+	else if(op == insert){
+		int index = cacheset->num_entries;
+		cacheset->entry_queue[index] = entry_num;
+	}
+	else if(op == delete){
+		int index;
+		for(index=0; index<cacheset->num_entries; index++){
+			if(cacheset->entry_queue[index] == entry_num){
+				break;
+			}
+		}
+		for(int i=index, i<cacheset->num_entries; index++){
+			cacheset->entry_queue[i] = cacheset->entry_queue[i+1];
+		}
+	}
+	pthread_mutex_unlock(&(cacheset->mutex));
 }
 
 /* get the entry_num when no spare entry space exist */
 int get_entry_index(kvcacheset_t *cacheset){
-  int index = cacheset->elem_per_set - 1;
-  int used_entry = cacheset->entry_queue[index];
-  while(index-- > 0){
-    cacheset->entry_queue[index] = cacheset->entry_queue[index-1];
-  }
-  cacheset->entry_queue[0] = used_entry;
-  return used_entry;
+	int index = cacheset->num_entries - 1;
+	return cacheset->entry_queue[index];
 }
 
 /* Get the entry corresponding to KEY from CACHESET. Returns 0 if successful,
@@ -60,8 +83,10 @@ int kvcacheset_get(kvcacheset_t *cacheset, char *key, char **value) {
   int i = 0;
   for(; i < cacheset->num_entries; i++){
     if(strcmp(key, cacheset->entries[i].key) == 0 && cacheset->entries[i].refbit){
+	  pthread_rwlock_rdlock(&(cacheset->lock));
       value = &(cacheset->entries[i].value);
-      update_queue(cacheset, i, false);
+      update_queue(cacheset, i, update);
+	  pthread_rwlock_unlock(&(cacheset->lock));
       return 0;
     }
   }
@@ -72,34 +97,58 @@ int kvcacheset_get(kvcacheset_t *cacheset, char *key, char **value) {
  * returns a negative error code. Should evict elements if necessary to not
  * exceed CACHESET->elem_per_set total entries. */
 int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
-  // exist unused slot
-  int index = 0;
+  // check key exist or not
+  for(int i=0; i<cacheset->num_entries; i++){
+	  if(strcmp(cacheset->entries[i].key, key) == 0 && cacheset->entries[i].refbit){
+		  pthread_rwlock_wrlock(&(cacheset->lock));
+		  free(cacheset->entries[i].value, key);
+		  int length = strlen(value) + 1;
+		  cacheset->entries[i].value = (char *)malloc(length);
+		  if(cacheset->entries[i].value == NULL){
+			  return ENOMEM;
+		  }
+		  strncpy(cacheset->entries[i].value, value, length);
+ 		  update_queue(cacheset, i, update); 
+		  pthread_rwlock_unlock(&(cacheset->lock));
+		  return 0;
+	  }
+  }
+
+  // key not exist
+  // exist ununsed slot or not
+  int index, operation;
   if(cacheset->num_entries < cacheset->elem_per_set){
-    int i = 0;
-    for(; i < cacheset->elem_per_set; i++){
-      if(!cacheset->entries[i].refbit || strcmp(key, cacheset->entries[i].key) == 0){
-        index = i;
-        break;
-      }          
-    }
+	  for(index=0; index<cacheset->elem_per_set; index++){
+		  if(!cacheset->entries[index].refbit){
+			  operation = insert;
+			  break;
+		  }
+	  }
   }
   else{
-    index = get_entry_index(cacheset);
+	  index = get_entry_index(cacheset);
+	  operation = update;
   }
-  
-  int length_key = strlen(key);
-  int length_value = strlen(value);
+  pthread_rwlock_wrlock(&(cacheset->lock));
   free(cacheset->entries[index].key);
   free(cacheset->entries[index].value);
-  cacheset->entries[index].key = (char *)malloc(length_key + 1);
-  cacheset->entries[index].value = (char *)malloc(length_value + 1);
-  if(!cacheset->entries[index].key) return -1;
-  if(!cacheset->entries[index].value) return -1;
-  strncpy(cacheset->entries[index].key, key, (length_key + 1));
-  strncpy(cacheset->entries[index].value, value, (length_value + 1));
-  cacheset->entries[index].refbit = true;
-  cacheset->num_entries++;
-  update_queue(cacheset, index, true);
+  int length_key = strlen(key) + 1;
+  int length_value = strlen(value) + 1;
+  cacheset->entries[index].key = (char *)malloc(length_key);
+  if(cacheset->entries[index].key == NULL){
+      return ENOMEM;
+  }
+  cacheset->entries[index].value = (char *)malloc(length_value);
+  if(cacheset->entries[index].value == NULL){
+      return ENOMEM;
+  }
+  strncpy(cacheset->entries[index].key, key, length_key);
+  strncpy(cacheset->entries[index].value, value, length_value);
+  update_queue(cacheset, index, operation);
+  if(operation == insert){
+	  cacheset->num_entries += 1;
+  }
+  pthread_rwlock_unlock(&(cacheset->lock));
   return 0;
 }
 
@@ -109,10 +158,13 @@ int kvcacheset_del(kvcacheset_t *cacheset, char *key) {
   int index = 0;
   for(; index < cacheset->elem_per_set; index++){
     if(strcmp(key, cacheset->entries[index].key) == 0){
+	  pthread_rwlock_wrlock(&(cacheset->lock));
       free(cacheset->entries[index].key);
       free(cacheset->entries[index].value);
       cacheset->entries[index].refbit = false;
-      update_queue(cacheset, index, true);
+      update_queue(cacheset, index, delete);
+	  cacheset->num_entries -= 1;
+	  pthread_rwlock_unlock(&(cacheset->lock));
     }
   }
   return -1;
@@ -129,4 +181,6 @@ void kvcacheset_clear(kvcacheset_t *cacheset) {
     }
   }
   free(cacheset->entries);
+  pthread_rwlock_destory(&(cacheset->lock));
+  pthread_rwlock_destory(&(cacheset->mutex));
 }
