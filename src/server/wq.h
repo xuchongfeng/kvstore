@@ -12,13 +12,15 @@
  */
 
 typedef struct wq_item {
-   void *item;             /* The item which is being stored. */
-   struct wq_item *next;   /* The next item in the queue. */
-   struct wq_item *prev;   /* The previous item in the queue. */
+   void *item;               /* The item which is being stored. */
+   struct wq_item *next;     /* The next item in the queue. */
+   struct wq_item *prev;     /* The previous item in the queue. */
 } wq_item_t;
 
 typedef struct wq {
-  wq_item_t *head;         /* The head of the list of items. */
+  wq_item_t *head;           /* The head of the list of items. */
+  pthread_mutex_t mutex;     /* Mutex used to syn. */
+  pthread_condition_t cond;  /* Cond used to sym. */
 } wq_t;
 
 
@@ -27,5 +29,7 @@ void wq_init(wq_t *wq);
 void wq_push(wq_t *wq, void *item);
 
 void *wq_pop(wq_t *wq);
+
+void wq_destory(wq_t *wq);
 
 #endif
