@@ -84,7 +84,7 @@ int kvcacheset_get(kvcacheset_t *cacheset, char *key, char **value) {
   for(; i < cacheset->num_entries; i++){
     if(strcmp(key, cacheset->entries[i].key) == 0 && cacheset->entries[i].refbit){
 	  pthread_rwlock_rdlock(&(cacheset->lock));
-      value = &(cacheset->entries[i].value);
+      *value = &(cacheset->entries[i].value);
       update_queue(cacheset, i, update);
 	  pthread_rwlock_unlock(&(cacheset->lock));
       return 0;
