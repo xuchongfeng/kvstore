@@ -53,33 +53,56 @@ int kvserver_register_master(kvserver_t *server, int sockfd) {
  * be free()d.  If the KEY is in cache, take the value from there. Otherwise,
  * go to the store and update the value in the cache. */
 int kvserver_get(kvserver_t *server, char *key, char **value) {
-  return -1;
+  int ret = kvcache_get(server->cache, key, value);
+  if(ret < 0){
+	  ret = kvstore_get(server->store, key, value);
+	  if(ret < 0){
+		  return ret;
+	  }
+	  else{
+		  ret = kvcache_put(server->cache, key, *value);
+	  }
+  }
+  return ret;
 }
 
 /* Checks if the given KEY, VALUE pair can be inserted into this server's
  * store. Returns 0 if it can, else a negative error code. */
 int kvserver_put_check(kvserver_t *server, char *key, char *value) {
-  return -1;
+  return kvstore_put_check(server->store, key, value);
 }
 
 /* Inserts the given KEY, VALUE pair into this server's store and cache. Access
  * to the cache should be concurrent if the keys are in different cache sets.
  * Returns 0 if successful, else a negative error code. */
 int kvserver_put(kvserver_t *server, char *key, char *value) {
-  return -1;
+  int ret;
+  ret = kvserver_put_check(server, key, value);
+  if(ret < 0) return ret;
+  ret = kvcache_put(server->cache, key, value);
+  if(ret < 0) return ret;
+  ret = kvstore_put(server->store, key, value);
+  if(ret < 0) return ret;
+  return 0;
 }
 
 /* Checks if the given KEY can be deleted from this server's store.
  * Returns 0 if it can, else a negative error code. */
 int kvserver_del_check(kvserver_t *server, char *key) {
-  return -1;
+  return kvstore_del_check(server->store, key);
 }
 
 /* Removes the given KEY from this server's store and cache. Access to the
  * cache should be concurrent if the keys are in different cache sets. Returns
  * 0 if successful, else a negative error code. */
 int kvserver_del(kvserver_t *server, char *key) {
-  return -1;
+  int ret;
+  ret = kvserver_del_check(server, key);
+  if(ret < 0) return ret;
+  kvcache_del(server->cache, key);
+  ret = kvstore_del(server->store, key);
+  if(ret < 0) return ret;
+  return 0;
 }
 
 /* Returns an info string about SERVER including its hostname and port. */
