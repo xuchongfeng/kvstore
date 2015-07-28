@@ -137,13 +137,26 @@ void kvserver_handle_tpc(kvserver_t *server, kvmessage_t *reqmsg,
  * message. See the spec for details on logic and error messages. */
 void kvserver_handle_no_tpc(kvserver_t *server, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
+  respmsg->type = RESP;
   if(reqmsg->type == INFO){
-     respmsg->type = RESP;
      respmsg->message = kvserver_get_info_message(server);
      return;
   }
-  respmsg->type = RESP;
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  if(reqmsg->type == GETREQ){
+	  int ret = kvserver_get(server, reqmsg->key, &(respmsg->value));
+	  respmsg->message = ret < 0 ? GETMSG(ret) : MSG_SUCCESS;
+	  return;
+  }
+  if(reqmsg->type == PUTREQ){
+	  int ret = kvserver_put(server, reqmsg->key, reqmsg->value);
+	  respmsg->message = ret < 0 ? GETMSG(ret) : MSG_SUCCESS;
+	  return;
+  }
+  if(reqmsg->type == DELREQ){
+	  int ret = kvserver_del(server, reqmsg->key);
+	  respmsg->message = ret < 0 ? GETMSG(ret) : MSG_SUCCESS;
+	  return;
+  }
 }
 
 /* Generic entrypoint for this SERVER. Takes in a socket on SOCKFD, which
