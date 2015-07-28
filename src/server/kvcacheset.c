@@ -165,6 +165,7 @@ int kvcacheset_del(kvcacheset_t *cacheset, char *key) {
       update_queue(cacheset, index, delete);
 	  cacheset->num_entries -= 1;
 	  pthread_rwlock_unlock(&(cacheset->lock));
+	  return 0;
     }
   }
   return -1;
