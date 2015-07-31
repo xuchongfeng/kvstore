@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
 #include "uthash.h"
 #include "utlist.h"
 #include "kvconstants.h"
@@ -63,7 +64,10 @@ void update_queue(kvcacheset_t *cacheset, int entry_num, int op){
 				break;
 			}
 		}
-		for(int i=index, i<cacheset->num_entries; index++){
+		for(int i=index; i<cacheset->num_entries; i++){
+            if(i == (cacheset->elem_per_set-1)){
+                break;
+            }
 			cacheset->entry_queue[i] = cacheset->entry_queue[i+1];
 		}
 	}
@@ -81,16 +85,16 @@ int get_entry_index(kvcacheset_t *cacheset){
  * malloced string which should later be freed. */
 int kvcacheset_get(kvcacheset_t *cacheset, char *key, char **value) {
   int i = 0;
-  for(; i < cacheset->num_entries; i++){
-    if(strcmp(key, cacheset->entries[i].key) == 0 && cacheset->entries[i].refbit){
+  for(; i < cacheset->elem_per_set; i++){
+    if(cacheset->entries[i].refbit && strcmp(key, cacheset->entries[i].key) == 0){
 	  pthread_rwlock_rdlock(&(cacheset->lock));
-      *value = &(cacheset->entries[i].value);
+      *value = cacheset->entries[i].value;
       update_queue(cacheset, i, update);
 	  pthread_rwlock_unlock(&(cacheset->lock));
       return 0;
     }
   }
-  return -1;
+  return ERRNOKEY;
 }
 
 /* Add the given KEY, VALUE pair to CACHESET. Returns 0 if successful, else
@@ -101,10 +105,11 @@ int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
   for(int i=0; i<cacheset->num_entries; i++){
 	  if(strcmp(cacheset->entries[i].key, key) == 0 && cacheset->entries[i].refbit){
 		  pthread_rwlock_wrlock(&(cacheset->lock));
-		  free(cacheset->entries[i].value, key);
+		  free(cacheset->entries[i].value);
 		  int length = strlen(value) + 1;
 		  cacheset->entries[i].value = (char *)malloc(length);
 		  if(cacheset->entries[i].value == NULL){
+              pthread_rwlock_unlock(&(cacheset->lock));
 			  return ENOMEM;
 		  }
 		  strncpy(cacheset->entries[i].value, value, length);
@@ -116,6 +121,7 @@ int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
 
   // key not exist
   // exist ununsed slot or not
+  pthread_rwlock_wrlock(&(cacheset->lock));
   int index, operation;
   if(cacheset->num_entries < cacheset->elem_per_set){
 	  for(index=0; index<cacheset->elem_per_set; index++){
@@ -129,21 +135,23 @@ int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
 	  index = get_entry_index(cacheset);
 	  operation = update;
   }
-  pthread_rwlock_wrlock(&(cacheset->lock));
   free(cacheset->entries[index].key);
   free(cacheset->entries[index].value);
   int length_key = strlen(key) + 1;
   int length_value = strlen(value) + 1;
   cacheset->entries[index].key = (char *)malloc(length_key);
   if(cacheset->entries[index].key == NULL){
+      pthread_rwlock_unlock(&(cacheset->lock));
       return ENOMEM;
   }
   cacheset->entries[index].value = (char *)malloc(length_value);
   if(cacheset->entries[index].value == NULL){
+      pthread_rwlock_unlock(&(cacheset->lock));
       return ENOMEM;
   }
   strncpy(cacheset->entries[index].key, key, length_key);
   strncpy(cacheset->entries[index].value, value, length_value);
+  cacheset->entries[index].refbit = true;
   update_queue(cacheset, index, operation);
   if(operation == insert){
 	  cacheset->num_entries += 1;
@@ -157,7 +165,7 @@ int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
 int kvcacheset_del(kvcacheset_t *cacheset, char *key) {
   int index = 0;
   for(; index < cacheset->elem_per_set; index++){
-    if(strcmp(key, cacheset->entries[index].key) == 0){
+    if(strcmp(key, cacheset->entries[index].key) == 0 && cacheset->entries[index].refbit){
 	  pthread_rwlock_wrlock(&(cacheset->lock));
       free(cacheset->entries[index].key);
       free(cacheset->entries[index].value);
@@ -179,9 +187,7 @@ void kvcacheset_clear(kvcacheset_t *cacheset) {
     if(cacheset->entries[index].refbit){
       free(cacheset->entries[index].key);
       free(cacheset->entries[index].value);
+      cacheset->entries[index].refbit = false;
     }
   }
-  free(cacheset->entries);
-  pthread_rwlock_destory(&(cacheset->lock));
-  pthread_rwlock_destory(&(cacheset->mutex));
 }
