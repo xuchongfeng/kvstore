@@ -20,7 +20,7 @@ typedef struct wq_item {
 typedef struct wq {
   wq_item_t *head;           /* The head of the list of items. */
   pthread_mutex_t mutex;     /* Mutex used to syn. */
-  pthread_condition_t cond;  /* Cond used to sym. */
+  pthread_cond_t cond;  /* Cond used to sym. */
 } wq_t;
 
 

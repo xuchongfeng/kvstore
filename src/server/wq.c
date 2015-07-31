@@ -22,6 +22,7 @@ void *wq_pop(wq_t *wq) {
   pthread_mutex_lock(&(wq->mutex));
   while(wq->head == NULL){
 	  pthread_cond_wait(&(wq->cond), &(wq->mutex));
+  }
   job = wq->head->item;
   DL_DELETE(wq->head,wq->head);
   pthread_mutex_unlock(&(wq->mutex));
@@ -37,7 +38,7 @@ void wq_push(wq_t *wq, void *item) {
   wq_item->item = item;
   pthread_mutex_lock(&(wq->mutex));
   DL_APPEND(wq->head, wq_item);
-  pthread_cond_signal(&(wq->mutex));
+  pthread_cond_signal(&(wq->cond));
   pthread_mutex_unlock(&(wq->mutex));
 }
 
@@ -45,11 +46,11 @@ void wq_push(wq_t *wq, void *item) {
  *
  * Wait all the jobs are done. */
 void wq_destory(wq_t *wq) {
-	pthread_mutex_lock(&(wq->lock));
+	pthread_mutex_lock(&(wq->mutex));
 	while(wq->head != NULL) {
 		pthread_cond_wait(&(wq->cond), &(wq->mutex));
 	}
-	pthread_mutex_unlock(&(wq->lock));
-	pthread_mutex_destory(&(wq->mutex));
-	pthread_mutex_destory(&(wq->cond));
+	pthread_mutex_unlock(&(wq->mutex));
+	pthread_mutex_destroy(&(wq->mutex));
+	pthread_cond_destroy(&(wq->cond));
 }
