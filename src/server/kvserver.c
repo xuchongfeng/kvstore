@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <pthread.h>
+#include <string.h>
 #include "kvconstants.h"
 #include "kvcache.h"
 #include "kvstore.h"
@@ -28,7 +29,7 @@ int kvserver_init(kvserver_t *server, char *dirname, unsigned int num_sets,
       ret = tpclog_init(&server->log, dirname);
       if (ret < 0) return ret;
   }
-  server->hostname = malloc(strlen(hostname) + 1);
+  server->hostname = (char *)malloc(strlen(hostname) + 1);
   if (server->hostname == NULL)
     return ENOMEM;
   strcpy(server->hostname, hostname);
@@ -53,14 +54,14 @@ int kvserver_register_master(kvserver_t *server, int sockfd) {
  * be free()d.  If the KEY is in cache, take the value from there. Otherwise,
  * go to the store and update the value in the cache. */
 int kvserver_get(kvserver_t *server, char *key, char **value) {
-  int ret = kvcache_get(server->cache, key, value);
+  int ret = kvcache_get(&(server->cache), key, value);
   if(ret < 0){
-	  ret = kvstore_get(server->store, key, value);
+	  ret = kvstore_get(&(server->store), key, value);
 	  if(ret < 0){
 		  return ret;
 	  }
 	  else{
-		  ret = kvcache_put(server->cache, key, *value);
+		  ret = kvcache_put(&(server->cache), key, *value);
 	  }
   }
   return ret;
@@ -69,7 +70,7 @@ int kvserver_get(kvserver_t *server, char *key, char **value) {
 /* Checks if the given KEY, VALUE pair can be inserted into this server's
  * store. Returns 0 if it can, else a negative error code. */
 int kvserver_put_check(kvserver_t *server, char *key, char *value) {
-  return kvstore_put_check(server->store, key, value);
+  return kvstore_put_check(&(server->store), key, value);
 }
 
 /* Inserts the given KEY, VALUE pair into this server's store and cache. Access
@@ -79,9 +80,9 @@ int kvserver_put(kvserver_t *server, char *key, char *value) {
   int ret;
   ret = kvserver_put_check(server, key, value);
   if(ret < 0) return ret;
-  ret = kvcache_put(server->cache, key, value);
+  ret = kvcache_put(&(server->cache), key, value);
   if(ret < 0) return ret;
-  ret = kvstore_put(server->store, key, value);
+  ret = kvstore_put(&(server->store), key, value);
   if(ret < 0) return ret;
   return 0;
 }
@@ -89,7 +90,7 @@ int kvserver_put(kvserver_t *server, char *key, char *value) {
 /* Checks if the given KEY can be deleted from this server's store.
  * Returns 0 if it can, else a negative error code. */
 int kvserver_del_check(kvserver_t *server, char *key) {
-  return kvstore_del_check(server->store, key);
+  return kvstore_del_check(&(server->store), key);
 }
 
 /* Removes the given KEY from this server's store and cache. Access to the
@@ -99,8 +100,8 @@ int kvserver_del(kvserver_t *server, char *key) {
   int ret;
   ret = kvserver_del_check(server, key);
   if(ret < 0) return ret;
-  kvcache_del(server->cache, key);
-  ret = kvstore_del(server->store, key);
+  kvcache_del(&(server->cache), key);
+  ret = kvstore_del(&(server->store), key);
   if(ret < 0) return ret;
   return 0;
 }
@@ -145,6 +146,12 @@ void kvserver_handle_no_tpc(kvserver_t *server, kvmessage_t *reqmsg,
   if(reqmsg->type == GETREQ){
 	  int ret = kvserver_get(server, reqmsg->key, &(respmsg->value));
 	  respmsg->message = ret < 0 ? GETMSG(ret) : MSG_SUCCESS;
+      if(ret == 0){
+          respmsg->type = GETRESP;
+          int length_key = strlen(reqmsg->key) + 1;
+          respmsg->key = (char *)malloc(length_key);
+          strncpy(respmsg->key, reqmsg->key, length_key);
+      }
 	  return;
   }
   if(reqmsg->type == PUTREQ){
