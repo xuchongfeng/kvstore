@@ -14,14 +14,14 @@ int kvcache_init(kvcache_t *cache, unsigned int num_sets,
   int i;
   if (num_sets == 0 || elem_per_set == 0)
     return -1;
-  cache->sets = malloc(num_sets * sizeof(kvcacheset_t));
+  cache->sets = (kvcacheset_t *)malloc(num_sets * sizeof(kvcacheset_t));
   if (cache->sets == NULL)
     return ENOMEM;
   cache->num_sets = num_sets;
   cache->elem_per_set = elem_per_set;
   for (i = 0; i < num_sets; ++i) {
-    if (kvcacheset_init(&cache->sets[i], elem_per_set) != 0)
-      return -1;
+    int ret = kvcacheset_init(&cache->sets[i], elem_per_set);
+    if(ret < 0) return ret;
   }
   return 0;
 }
