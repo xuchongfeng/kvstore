@@ -39,10 +39,12 @@ void handle_slave(server_t *server) {
 /* Handles requests for _SERVER. */
 void *handle(void *_server) {
   server_t *server = (server_t *) _server;
-  if (server->master) {
-    handle_master(server);
-  } else {
-    handle_slave(server);
+  while(1){
+    if (server->master) {
+      handle_master(server);
+    } else {
+      handle_slave(server);
+    }
   }
   return NULL;
 }
@@ -94,6 +96,14 @@ int server_run(const char *hostname, int port, server_t *server,
   server->hostname = (char *) malloc(strlen(hostname) + 1);
   strcpy(server->hostname, hostname);
 
+  pthread_t *pthread = (pthread_t *)malloc(server->max_threads * sizeof(pthread));
+  if(pthread == NULL) {
+    return ENOMEM;
+  }
+  for(int i=0; i<server->max_threads; i++){
+    pthread_create(&(pthread[i]), NULL, handle, (void *)server);
+  }
+
   sock_fd = socket(PF_INET, SOCK_STREAM, 0);
   server->sockfd = sock_fd;
   if (sock_fd == -1) {
@@ -129,14 +139,15 @@ int server_run(const char *hostname, int port, server_t *server,
     callback(NULL);
   }
 
-
   while (server->listening) {
     client_sock = accept(sock_fd, (struct sockaddr *) &client_address,
         (socklen_t *) &client_address_length);
     if (client_sock > 0) {
       wq_push(&server->wq, (void *) (intptr_t) client_sock);
-      handle(server);
     }
+  }
+  for(int i=0; i<server->max_threads; i++) {
+    pthread_join(pthread[i], NULL);
   }
   shutdown(sock_fd, SHUT_RDWR);
   close(sock_fd);
