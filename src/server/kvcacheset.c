@@ -103,7 +103,7 @@ int kvcacheset_get(kvcacheset_t *cacheset, char *key, char **value) {
 int kvcacheset_put(kvcacheset_t *cacheset, char *key, char *value) {
   // check key exist or not
   for(int i=0; i<cacheset->num_entries; i++){
-	  if(strcmp(cacheset->entries[i].key, key) == 0 && cacheset->entries[i].refbit){
+	  if(cacheset->entries[i].refbit && strcmp(cacheset->entries[i].key, key) == 0){
 		  pthread_rwlock_wrlock(&(cacheset->lock));
 		  free(cacheset->entries[i].value);
 		  int length = strlen(value) + 1;
@@ -176,7 +176,7 @@ int kvcacheset_del(kvcacheset_t *cacheset, char *key) {
 	  return 0;
     }
   }
-  return -1;
+  return ERRNOKEY;
 }
 
 /* Completely clears this cache set. For testing purposes. */
