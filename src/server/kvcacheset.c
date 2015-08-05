@@ -54,8 +54,11 @@ void update_queue(kvcacheset_t *cacheset, int entry_num, int op){
 		cacheset->entry_queue[0] = entry_num;
 	}
 	else if(op == insert){
-		int index = cacheset->num_entries;
-		cacheset->entry_queue[index] = entry_num;
+		int entries = cacheset->num_entries;
+        for(int i=entries; i>0; i--){
+          cacheset->entry_queue[i] = cacheset->entry_queue[i-1];
+        }
+		cacheset->entry_queue[0] = entry_num;
 	}
 	else if(op == delete){
 		int index;
