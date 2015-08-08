@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <string.h>
 #include "kvconstants.h"
 #include "kvmessage.h"
 #include "socket_server.h"
@@ -44,6 +45,34 @@ int64_t hash_64_bit(char *s) {
   return h;
 }
 
+/* Init slave 
+ * with hostname and port from reqmsg
+ */
+tpcslave_t* init_slave(char* hostname, char* port)
+{
+	tpcslave_t* slave = (tpcslave_t *)malloc(sizeof(tpcslave_t));
+	if(slave == NULL) return NULL;
+	slave->host = (char *)malloc((strlen(hostname) + 1));
+	strcpy(slave->host, hostname);
+	if(slave->host == NULL) return NULL;
+	slave->port = atoi(port);
+	char* port_host = (char *)malloc(strlen(hostname) + strlen(port) + 2);
+	if(port_host == NULL) return NULL;
+	sprintf(port_host, "%s:%s", port, hostname);
+	slave->is = hash_64_bit(port_host);
+	return slave;
+}
+
+/* Cmp function
+ * sort slaves according to the UID
+ */
+int cmp(tpcslave_t *slave1, tpcslave_t *slave2)
+{
+	if(slave1->id < slave2->id) return 1;
+	else if(slave1->id == slave2->id) return 0;
+	else return -1;
+}
+
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
  * of RESPMSG as a response. RESPMSG and REQMSG both must point to valid
  * kvmessage_t structs. Assigns an ID to the slave by hashing a string in the
@@ -55,6 +84,13 @@ int64_t hash_64_bit(char *s) {
  * Checkpoint 2 only. */
 void tpcmaster_register(tpcmaster_t *master, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
+  tpcslave_t* slave = init_slave(reqmsg->key, reqmsg->value);
+  if(slave == NULL){
+	  respmsg->message = ERRMSG_GENERIC_ERROR;
+	  return;
+  }
+  DL_APPEND(master->slaves_head, slave);
+
   respmsg->message = ERRMSG_NOT_IMPLEMENTED;
 }
 
