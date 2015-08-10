@@ -107,7 +107,12 @@ void tpcmaster_register(tpcmaster_t *master, kvmessage_t *reqmsg,
  *
  * Checkpoint 2 only. */
 tpcslave_t *tpcmaster_get_primary(tpcmaster_t *master, char *key) {
-  return NULL;
+  int64_t key_hash = hash_64_bit(key);
+  tpcslave_t *slave = master->head;
+  while(slave && slave->id < key_hash){
+	  slave = slave->next;
+  }
+  return slave == NULL ? master->head : slave;
 }
 
 /* Returns the slave whose ID comes after PREDECESSOR's, sorted
@@ -116,7 +121,7 @@ tpcslave_t *tpcmaster_get_primary(tpcmaster_t *master, char *key) {
  * Checkpoint 2 only. */
 tpcslave_t *tpcmaster_get_successor(tpcmaster_t *master,
     tpcslave_t *predecessor) {
-  return NULL;
+  return predecessor->next == NULL ? master->slaves_head : predecessor->next;
 }
 
 /* Handles an incoming GET request REQMSG, and populates the appropriate fields
@@ -126,7 +131,12 @@ tpcslave_t *tpcmaster_get_successor(tpcmaster_t *master,
  * Checkpoint 2 only. */
 void tpcmaster_handle_get(tpcmaster_t *master, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  char *value;
+  int ret = kvcache_get(master->cache, reqmsg->key, value); 
+  respmsg->message = MSG_SUCCESS;
+  if(ret < 0){
+	
+
 }
 
 /* Handles an incoming TPC request REQMSG, and populates the appropriate fields
