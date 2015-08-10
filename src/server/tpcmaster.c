@@ -89,9 +89,15 @@ void tpcmaster_register(tpcmaster_t *master, kvmessage_t *reqmsg,
 	  respmsg->message = ERRMSG_GENERIC_ERROR;
 	  return;
   }
+  respmsg->message = MSG_SUCCESS;
+  // check slave exist or not, if exist return
+  tpcslave_t* tmp = master->slaves_head;
+  while(tmp){
+	  if(tmp->id == slave->id) return;
+	  tmp = tmp->next;
+  }
   DL_APPEND(master->slaves_head, slave);
-
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  DL_SORT(master->slaves_head, cmp);
 }
 
 /* Hashes KEY and finds the first slave that should contain it.
