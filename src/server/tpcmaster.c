@@ -205,6 +205,19 @@ void tpcmaster_handle_tpc(tpcmaster_t *master, kvmessage_t *reqmsg,
   respmsg->message = MSG_SUCCESS;
 }
 
+/* Check the slave alive or not
+ */
+bool is_slave_alive(tpcslave_t *slave)
+{
+	char *host = slave->host;
+	int port = slave->port;
+	int sockfd = connect_to(host, port, TIME_OUT);
+	if(sockfd < 0) return false;
+	shutdown(sockfd, SHUT_RDWR);
+	close(sockfd);
+	return true;
+}
+
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
  * of RESPMSG as a response. RESPMSG and REQMSG both must point to valid
  * kvmessage_t structs. Provides information about the slaves that are
@@ -213,7 +226,20 @@ void tpcmaster_handle_tpc(tpcmaster_t *master, kvmessage_t *reqmsg,
  * Checkpoint 2 only. */
 void tpcmaster_info(tpcmaster_t *master, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  char *slave_info = (char *)malloc(100);
+  if(slave_info == NULL){
+	  respmsg->message = ERRMSG_GENERIC_ERROR;
+	  return;
+  }
+  tpcslave_t *slave = master->slaves_head;
+  while(slave){
+	  if(is_slave_alive(slave)) {
+	    sprintf(slave_info, "%s %s:%d\n", slave_info, slave->host, slave->port);
+	  }
+	  slave = slave->next;
+  }
+  respmsg->message = MSG_SUCCESS;
+  respmsg->value = slave_info;
 }
 
 /* Generic entrypoint for this MASTER. Takes in a socket on SOCKFD, which
