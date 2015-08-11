@@ -9,6 +9,8 @@
 #include "time.h"
 #include "tpcmaster.h"
 
+#define TIME_OUT 1
+
 /* Initializes a tpcmaster. Will return 0 if successful, or a negative error
  * code if not. SLAVE_CAPACITY indicates the maximum number of slaves that
  * the master will support. REDUNDANCY is the number of replicas (slaves) that
@@ -131,12 +133,26 @@ tpcslave_t *tpcmaster_get_successor(tpcmaster_t *master,
  * Checkpoint 2 only. */
 void tpcmaster_handle_get(tpcmaster_t *master, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
+  char *key = reqmsg->key;
   char *value;
-  int ret = kvcache_get(master->cache, reqmsg->key, value); 
+  // get from master's cache
+  int ret = kvcache_get(master->cache, reqmsg->key, &value); 
   respmsg->message = MSG_SUCCESS;
   if(ret < 0){
-	
+	  // get from primary slave
+	  tpcslave_t* primary = tpcmaster_get_primary(master, key);
+	  int sock_fd = connect_to(primary->hostname, primary->port, TIME_OUT);
+	  kvmessage_send(reqmsg, sock_fd);
+	  respmsg = kvmessage_parse(sock_fd);
 
+	  if( strcmp(respmsg->message, MSG_SUCCESS) != 0 ) {
+		  // get from successor slave
+		  tpcslave_t *successor = tpcmaster_get_successor(master, primary);
+		  sock_fd = connect_to(primary->hostname, primary->port, TIME_OUT);
+		  kvmessage_send(reqmsg, sock_fd);
+		  respmsg = kvmessage_parse(sock_fd);
+	  }
+  }
 }
 
 /* Handles an incoming TPC request REQMSG, and populates the appropriate fields
@@ -157,7 +173,36 @@ void tpcmaster_handle_get(tpcmaster_t *master, kvmessage_t *reqmsg,
  * Checkpoint 2 only. */
 void tpcmaster_handle_tpc(tpcmaster_t *master, kvmessage_t *reqmsg,
     kvmessage_t *respmsg, callback_t callback) {
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  char *key = reqmsg->key;
+  // pharse 1, ask associated slave commit or abort
+  tpcslave_t *primary = tpcmaster_get_primary(master, key);
+  int sock_primary = connect_to(primary->hostname, primary->port, TIME_OUT);
+  kvmessage_send(reqmsg);
+  respmsg = kvmessage_parse(sock_primary);
+  if(respmsg->type != VOTE_COMMIT){
+	  // pharse 2, abort
+	  reqmsg->type = ABORT;
+	  kvmessage_send(reqmsg, sock_primary);
+	  respmsg->message = ERRMSG_GENERIC_MESSAGE;
+	  return;
+  }
+  tpcslave_t *successor = tpcmaster_get_successor(master, primary);
+  int sock_successor = connect_to(successor->hostname, successor->port, TIME_OUT);
+  kvmessage_send(reqmsg, sock_successor);
+  respmsg = kvmessage_parge(sock_primary);
+  if(respmsg->type != VOTE_COMMIT){
+	  // pharse 2, abort
+	  reqmsg->type = ABORT;
+	  kvmessage_send(reqmsg, sock_primary);
+	  kvmessage_send(reqmsg, sock_successor);
+	  respmsg->message = ERRMSG_GENERIC_MESSAGE;
+	  return;
+  }
+  // pharse 2, commit
+  reqmsg->type = COMMIT;
+  kvmessage_send(reqmsg, sock_primary);
+  kvmessage_send(reqmsg, sock_successor);
+  respmsg->message = MSG_SUCCESS;
 }
 
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
