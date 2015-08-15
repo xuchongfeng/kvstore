@@ -46,6 +46,18 @@ int kvserver_init(kvserver_t *server, char *dirname, unsigned int num_sets,
  *
  * Checkpoint 2 only. */
 int kvserver_register_master(kvserver_t *server, int sockfd) {
+  kvmessage_t *reqmsg, *respmsg;
+  reqmsg = (kvmessage_t *)calloc(1, sizeof(kvmessage_t));
+  if(reqmsg == NULL) return -1;
+  reqmsg->type = REGISTER;
+  reqmsg->key = server->hostname;
+  reqmsg->value = server->port;
+  kvmessage_send(reqmsg, sockfd);
+  respmsg = kvmessage_parse(sockfd);
+  if(strcmp(respmsg->message, MSG_SUCCESS) != 0) return -1;
+  if(respmsg != NULL){
+	  free(respmsg);
+  }
   return 0;
 }
 
@@ -129,7 +141,21 @@ char *kvserver_get_info_message(kvserver_t *server) {
 void kvserver_handle_tpc(kvserver_t *server, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
   respmsg->type = RESP;
-  respmsg->message = ERRMSG_NOT_IMPLEMENTED;
+  if(reqmsg->type == GETREQ){
+	  int ret = kvserver_get(server, reqmsg->key, &(respmsg->value));
+	  respmsg->message = ret < 0 ? GETMSG(ret): MSG_SUCCESS;
+	  if(ret == 0){
+		  respmsg->type = GETRESP;
+		  int length_key = strlen(reqmsg->key) + 1;
+		  respmsg->key = (char *)malloc(length_key);
+		  strncpy(respmsg->key, reqmsg->key, length_key);
+	  }
+	  return;
+  }
+  if(reqmsg->type == PUTRES){
+  }
+  if(reqmsg->type == DELRES){
+  }
 }
 
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
