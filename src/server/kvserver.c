@@ -56,7 +56,7 @@ int kvserver_register_master(kvserver_t *server, int sockfd) {
   respmsg = kvmessage_parse(sockfd);
   if(strcmp(respmsg->message, MSG_SUCCESS) != 0) return -1;
   if(respmsg != NULL){
-	  free(respmsg);
+	free(respmsg);
   }
   return 0;
 }
@@ -68,13 +68,13 @@ int kvserver_register_master(kvserver_t *server, int sockfd) {
 int kvserver_get(kvserver_t *server, char *key, char **value) {
   int ret = kvcache_get(&(server->cache), key, value);
   if(ret < 0){
-	  ret = kvstore_get(&(server->store), key, value);
-	  if(ret < 0){
-		  return ret;
-	  }
-	  else{
-		  ret = kvcache_put(&(server->cache), key, *value);
-	  }
+	ret = kvstore_get(&(server->store), key, value);
+	if(ret < 0){
+	  return ret;
+	}
+	else{
+	  ret = kvcache_put(&(server->cache), key, *value);
+	}
   }
   return ret;
 }
