@@ -51,12 +51,12 @@ int kvserver_register_master(kvserver_t *server, int sockfd) {
   if(reqmsg == NULL) return -1;
   reqmsg->type = REGISTER;
   reqmsg->key = server->hostname;
-  reqmsg->value = server->port;
+  reqmsg->value = itoa(server->port);
   kvmessage_send(reqmsg, sockfd);
   respmsg = kvmessage_parse(sockfd);
   if(strcmp(respmsg->message, MSG_SUCCESS) != 0) return -1;
   if(respmsg != NULL){
-	free(respmsg);
+    free(respmsg);
   }
   return 0;
 }
@@ -140,7 +140,6 @@ char *kvserver_get_info_message(kvserver_t *server) {
  * Checkpoint 2 only. */
 void kvserver_handle_tpc(kvserver_t *server, kvmessage_t *reqmsg,
     kvmessage_t *respmsg) {
-  respmsg->type = RESP;
   if(reqmsg->type == GETREQ){
 	  int ret = kvserver_get(server, reqmsg->key, &(respmsg->value));
 	  respmsg->message = ret < 0 ? GETMSG(ret): MSG_SUCCESS;
@@ -152,10 +151,31 @@ void kvserver_handle_tpc(kvserver_t *server, kvmessage_t *reqmsg,
 	  }
 	  return;
   }
-  if(reqmsg->type == PUTRES){
+  if(reqmsg->type == PUTREQ){
+      int ret = kvstore_put_check(&(server->store), reqmsg->key, reqmsg->value);
+      if(ret < 0){
+           respmsg->type = VOTE_ABORT;
+           return;
+      }
+      tpclog_log(&(server->log), PUTREQ, reqmsg->key, reqmsg->value);
+      kvstore_put(&(server->store), reqmsg->key, reqmsg->value);
+      respmsg->type = VOTE_COMMIT;
+      return;
   }
-  if(reqmsg->type == DELRES){
+  if(reqmsg->type == DELREQ){
+      int ret = kvstore_put_check(&(server->store), resmsg->key, reqmsg->value);
+      if(ret < 0){
+           respmsg->type = VOTE_ABORT;
+           return;
+      }
+      tpclog_log(&(server->log), DELREQ, resmsg->key, reqmsg->value);
+      respmsg->type = VOTE_COMMIT;
+      return;
   }
+  if(reqmsg->type == COMMIT){
+
+  }
+
 }
 
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
