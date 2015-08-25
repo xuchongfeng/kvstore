@@ -173,9 +173,25 @@ void kvserver_handle_tpc(kvserver_t *server, kvmessage_t *reqmsg,
       return;
   }
   if(reqmsg->type == COMMIT){
-
+      char logname[MAX_FILENAME];
+      sprintf(logname, "%s/%lu%s", server->log.dirname, server->log.nextid-1, TPCLOG_FILETYPE);
+      logentry* entry;
+      tpclog_load_entry(&entry, logname);
+      if(entry->type == DELREQ){
+           kvstore_del(server, entry->data);
+      }
+      return;
   }
-
+  if(reqmsg->type == ABORT){
+      char logname[MAX_FILENAME];
+      sprintf(logname, "%s/%lu%s", server->log.dirname, server->log.nextid-1, TPCLOG_FILETYPE);
+      logentry* entry;
+      tpclog_load_entry(&entry, logname);
+      if(entry->type == PUTREQ){
+           kvserver_del(server, entry->data);
+      }
+      return;
+  }
 }
 
 /* Handles an incoming kvmessage REQMSG, and populates the appropriate fields
